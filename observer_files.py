@@ -8,6 +8,7 @@ from watchdog.events import FileSystemEventHandler
 import requests
 from fpdf import FPDF  # 用于将 .rpt 文件转换为 PDF
 from datetime import datetime
+import time
 
 # 定义函数来处理单个DICOM文件
 def process_dicom_file(dicom_path, output_dir):
@@ -17,17 +18,26 @@ def process_dicom_file(dicom_path, output_dir):
     # 提取用户信息
     patient_name = ds.get('PatientName', 'Unknown')
     study_date = ds.get('StudyDate', 'Unknown')
+    study_time = ds.get('StudyTime', 'Unknown')[:6]
+    study_date_time = datetime.strptime(study_date + study_time, "%Y%m%d%H%M%S").strftime('%Y-%m-%d %H:%M:%S')
+    """
     # 解析日期字符串
     date_obj = datetime.strptime(study_date, '%Y%m%d')
     # 添加默认的时分秒
     study_date = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+    """
     patient_id = ds.get('PatientID', 'Unknown')
     patient_sex = ds.get('PatientSex', 'Unknown')
-    patient_phone = ds.get('PatientTelephoneNumbers', 'Unknown')  # 注意这里可能不是标准DICOM标签
-    patient_address = ds.get('PatientAddress', 'Unknown')  # 注意这里可能不是标准DICOM标签
+    study_desc = ds.get('StudyDescription', 'Unknown')
+    patient_phone, patient_address = study_desc.split(';')
+    if(not(patient_phone)): patient_phone = 'Unknown'
+    if(not(patient_address)): patient_address = 'Unknown'
+    #patient_phone = ds.get('PatientTelephoneNumbers', 'Unknown')  # 注意这里可能不是标准DICOM标签
+    #patient_address = ds.get('PatientAddress', 'Unknown')  # 注意这里可能不是标准DICOM标签
     device_code = ds.get('DeviceSerialNumber', 'Unknown')
     data_id = ds.get('SOPInstanceUID', 'Unknown')
-    report_title = ds.get('SeriesDescription', 'Unknown')
+    report_title = str(patient_name) + " DR检查报告单" #ds.get('SeriesDescription', 'Unknown')
+    body_part = bytes(ds.get('BodyPartExamined', 'Unknown'), 'latin_1').decode('cp936')
     
     if patient_sex == 'M':
         patient_sex = '1'
@@ -37,7 +47,7 @@ def process_dicom_file(dicom_path, output_dir):
         patient_sex = '0'
 
     print(f"Patient Name: {patient_name}")
-    print(f"Study Date: {study_date}")
+    print(f"Study Date: {study_date_time}")
     print(f"Patient ID: {patient_id}")
     print(f"Patient Sex: {patient_sex}")
     print(f"Patient Phone: {patient_phone}")
@@ -45,17 +55,24 @@ def process_dicom_file(dicom_path, output_dir):
     print(f"Device Code: {device_code}")
     print(f"Data ID: {data_id}")
     print(f"Report Title: {report_title}")
+    print(f"Body Part Examined: {body_part}")
     
     # 将DICOM图像转换为PNG
+    cmd_part = r"dcmtk-tools\dcm2pnm.exe +Wm +on"
+    #png_filename = os.path.join(output_dir, f"{os.path.basename(dicom_path)}.png")
+    png_filename = os.path.splitext(os.path.basename(dicom_path))[0] + ".png"
+    png_filename = os.path.join(output_dir, png_filename)
+    cmd_line = cmd_part + " " + dicom_path + " " + png_filename
+    os.system(cmd_line)
+    time.sleep(3) # wait some time until png file is generated ok.
+    """
     image_data = ds.pixel_array
     plt.imshow(image_data, cmap=plt.cm.bone)  # 使用骨色映射
     plt.axis('off')  # 关闭坐标轴
-    
     # 保存PNG图像到指定目录
-    png_filename = os.path.join(output_dir, f"{os.path.basename(dicom_path)}.png")
     plt.savefig(png_filename, bbox_inches='tight', pad_inches=0)
-    
-    return png_filename, patient_name, study_date, patient_id, patient_sex, patient_phone, patient_address, device_code, data_id, report_title
+    """
+    return png_filename, patient_name, study_date_time, patient_id, patient_sex, patient_phone, patient_address, device_code, data_id, report_title
 
 # 将 .rpt 文件转换为 PDF
 def convert_rpt_to_pdf(rpt_path, pdf_path):
@@ -95,6 +112,7 @@ def upload_files(files, api_url):
         'checkTime': study_date
     }
 
+    print(data)
     # 鉴权
     authenticate_url = 'https://auth.lotusdata.com/v1/login/token'
     authentication_data = {
@@ -132,7 +150,6 @@ class DrImageFolderHandler(FileSystemEventHandler):
     def on_any_event(self, event):
         #if event.is_directory:
         if not(event.is_directory) and event.src_path.endswith(".pdf"):
-            print("\n")
             #print("event type is: " + event.event_type)
             if(("created" == event.event_type) and not(self.curr_file)):
                 self.curr_file = event.src_path
@@ -154,6 +171,7 @@ class DrImageFolderHandler(FileSystemEventHandler):
                 return
             
             #print(f"New folder detected: {new_folder}")
+            print("\n")
             print(f"New pdf file detected: {event.src_path}")
             print("file size: " + str(os.stat(event.src_path).st_size))
             output_folder = os.path.join(self.output_folder, os.path.basename(new_folder))
