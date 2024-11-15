@@ -1,0 +1,4 @@
+pydicom
+matplotlib
+watchdog
+fpdf
