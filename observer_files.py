@@ -29,14 +29,16 @@ def process_dicom_file(dicom_path, output_dir):
     patient_id = ds.get('PatientID', 'Unknown')
     patient_sex = ds.get('PatientSex', 'Unknown')
     study_desc = ds.get('StudyDescription', 'Unknown')
-    patient_phone, patient_address = study_desc.split(';')
-    if(not(patient_phone)): patient_phone = 'Unknown'
-    if(not(patient_address)): patient_address = 'Unknown'
+    if(study_desc.find(';') >= 0):
+        patient_phone, patient_address = study_desc.split(';')
+    else:
+        patient_phone = 'Unknown'
+        patient_address = 'Unknown'
     #patient_phone = ds.get('PatientTelephoneNumbers', 'Unknown')  # 注意这里可能不是标准DICOM标签
     #patient_address = ds.get('PatientAddress', 'Unknown')  # 注意这里可能不是标准DICOM标签
     device_code = ds.get('DeviceSerialNumber', 'Unknown')
     data_id = ds.get('SOPInstanceUID', 'Unknown')
-    report_title = str(patient_name) + " DR检查报告单" #ds.get('SeriesDescription', 'Unknown')
+    report_title = "DR检查报告单" #ds.get('SeriesDescription', 'Unknown')
     body_part = bytes(ds.get('BodyPartExamined', 'Unknown'), 'latin_1').decode('cp936')
     
     if patient_sex == 'M':
